@@ -12,13 +12,15 @@
 # Het relais is 'normaal aan' (AAN (veilig) als voldoende water, UIT 
 # (onveilig) als tank bijna leeg). De LED geeft status via knipperen.
 # 
-# Gemaakt voor MicroPython (bv. op RP2040, XAIA RP2350).
+# Gemaakt voor MicroPython (bv. op RP2040, XIAO RP2350).
 # ------------------------------------------------------------
 
 from machine import UART, Pin
 import utime
 from collections import deque
 import ujson
+from ubluetooth import BLE, UUID, FLAG_READ, FLAG_NOTIFY
+import struct
 
 # -------- CONFIGURATIE UIT FLASH (config.json) -----------
 def load_config(filename="config.json"):
@@ -38,7 +40,8 @@ def load_config(filename="config.json"):
         "RELAY_PIN": 16,                 # GPIO-pin voor relais
         "SLOW_BLINK_MS": 700,            # LED-blinktijd laag water
         "FAST_BLINK_MS": 200,            # LED-blinktijd bijna leeg
-        "MEASURE_INTERVAL_MS": 1000      # Interval tussen metingen (ms)
+        "MEASURE_INTERVAL_MS": 1000,      # Interval tussen metingen (ms)
+        "BLUETOOTH_ENABLED": True         # Nieuw: schakel BLE functionaliteit aan/uit
     }
     try:
         with open(filename) as f:
@@ -139,6 +142,11 @@ def send_output(msg):
     Kan gebruikt worden voor logging/debugging.
     """
     pc_uart.write((msg + '\n').encode())
+    try:
+        if ble_status:
+            ble_status.notify_status(msg)
+    except Exception:
+        pass  # BLE niet beschikbaar of niet geïnitialiseerd
 
 def read_distance():
     """
@@ -303,5 +311,67 @@ def main():
 
         utime.sleep_ms(30)  # Korte delay om CPU-belasting te verlagen
 
-# Start het programma
+# ----------- BLE STATUSRAPPORTAGE (Web Bluetooth) -----------
+# De onderstaande klasse WaterLevelBLE maakt het mogelijk om de status van het systeem
+# via Bluetooth Low Energy (BLE) uit te zenden. Hierdoor kan een Web BLE-applicatie
+# (zoals een browser-app op een telefoon of laptop) de actuele status van het waterniveau,
+# relais en eventuele foutmeldingen ontvangen.
+#
+# - Er wordt een BLE-service geadverteerd met een unieke UUID.
+# - De status wordt via een characteristic (met notify) aangeboden.
+# - Bij elke statusupdate (via send_output) wordt de status ook via BLE verstuurd.
+# - Web BLE clients kunnen verbinden, notificaties ontvangen en zo live de status volgen.
+# ------------------------------------------------------------
+
+class WaterLevelBLE:
+    SERVICE_UUID = UUID("12345678-1234-5678-1234-56789abcdef0")
+    CHAR_UUID = UUID("12345678-1234-5678-1234-56789abcdef1")
+
+    def __init__(self):
+        self.ble = BLE()
+        self.ble.active(True)
+        self.ble.irq(self.ble_irq)
+        self.status_handle = None
+        self.connections = set()
+        self._register()
+        self._advertise()
+
+    def _register(self):
+        # Registreer de BLE-service en characteristic voor statusmeldingen
+        status_char = (self.CHAR_UUID, FLAG_READ | FLAG_NOTIFY)
+        service = (self.SERVICE_UUID, (status_char,))
+        ((self.status_handle,),) = self.ble.gatts_register_services((service,))
+
+    def _advertise(self):
+        # Start BLE advertising zodat Web BLE clients het apparaat kunnen vinden
+        name = b'WaterLevel'
+        adv_data = b'\x02\x01\x06' + bytes([len(name) + 1, 0x09]) + name
+        self.ble.gap_advertise(100_000, adv_data)
+
+    def ble_irq(self, event, data):
+        # Beheer connecties van BLE clients (Web BLE apps)
+        if event == 1:  # Central connected
+            conn_handle, _, _ = data
+            self.connections.add(conn_handle)
+        elif event == 2:  # Central disconnected
+            conn_handle, _, _ = data
+            self.connections.discard(conn_handle)
+            self._advertise()
+
+    def notify_status(self, status_str):
+        # Stuur de status als notificatie naar alle verbonden BLE clients
+        if not self.connections:
+            return
+        # Truncate of vul aan tot 20 bytes voor BLE characteristic
+        value = status_str[:20].ljust(20)
+        self.ble.gatts_write(self.status_handle, value)
+        for conn_handle in self.connections:
+            self.ble.gatts_notify(conn_handle, self.status_handle, value)
+
+# Start het programma, BLE alleen als geconfigureerd
+if cfg.get("BLUETOOTH_ENABLED", True):
+    ble_status = WaterLevelBLE()
+else:
+    ble_status = None
+
 main()
