@@ -284,10 +284,10 @@ def main():
                 send_output('Sensor fout')
                 if error_count >= 5:
                     led.value(1)
-                    if relais_actief != 1:
-                        relais.value(1)
-                        relais_actief = 1
-                        send_output('Permanent sensor alarm! (Relais op veilig)')
+                    if relais_actief != 0:
+                        relais.value(0)  # Set relay to UNSAFE (OFF)
+                        relais_actief = 0
+                        send_output('Permanent sensor alarm! (Relais op onveilig)')
 
         # ---- LED/Relais-logica (kan sneller dan meetinterval) ----
         if utime.ticks_diff(now, last_blink) >= blink_interval:
