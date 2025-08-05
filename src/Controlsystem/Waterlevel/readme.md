@@ -14,7 +14,7 @@
 | `SLOW_BLINK_MS`          | Knippersnelheid LED in “LOW”-status (ms per cyclus).              | 700                |
 | `FAST_BLINK_MS`          | Knippersnelheid LED in “BOTTOM”-status (ms per cyclus).           | 200                |
 | `MEASURE_INTERVAL_MS`    | Interval tussen nieuwe metingen van de sensor (ms).               | 1000               |
-
+| `BLUETOOTH_ENABLED`      | Zet de bluetooth WebBLE rapportage uit of aan.                    | False              |
 
 #### **Uitleg Hysteresis:**
 
