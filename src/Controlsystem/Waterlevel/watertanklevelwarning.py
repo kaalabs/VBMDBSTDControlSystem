@@ -41,7 +41,7 @@ def load_config(filename="config.json"):
         "SLOW_BLINK_MS": 700,            # LED-blinktijd laag water
         "FAST_BLINK_MS": 200,            # LED-blinktijd bijna leeg
         "MEASURE_INTERVAL_MS": 1000,      # Interval tussen metingen (ms)
-        "BLUETOOTH_ENABLED": True         # Nieuw: schakel BLE functionaliteit aan/uit
+        "BLUETOOTH_ENABLED": False         # Nieuw: schakel BLE functionaliteit aan/uit
     }
     try:
         with open(filename) as f:
